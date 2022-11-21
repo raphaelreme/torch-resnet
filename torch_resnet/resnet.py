@@ -1,17 +1,6 @@
-"""Pre-activation resnets in PyTorch.
+"""Classical resnets [1]
 
-Implementation follows pre-activation resnets paper [2]. A width can be given to build wide resnet [3].
-Bottleneck follows torchvision and nvidia with the stride on the 3x3 convolution (Resnet v1.5)
-
-Note that in [3] Wide ResNet on Cifar has pre-activation.
-
-Reference:
-[1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
-    Deep Residual Learning for Image Recognition. arXiv:1512.03385
-[2] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
-    Identity Mappings in Deep Residual Networks. arXiv:1603.05027
-[3] Sergey Zagoruyko, Nikos Komodakis
-    Wide Residual Networks. arXiv:1605.07146
+Note that in [3], Wide ResNet 50-2 is without pre-activation contrary to Wide ResNet16/28/40
 """
 
 from typing import List, Tuple
