@@ -1,0 +1,8 @@
+-e .
+black
+build
+deep-trainer
+mypy
+pylint
+torchvision
+twine
