@@ -56,7 +56,7 @@ class PreActBlock(nn.Module):
 
         self.bn1 = nn.BatchNorm2d(in_planes)
         self.conv1 = nn.Conv2d(in_planes, self.out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.dropout = nn.Dropout(drop_rate, inplace=True)
+        self.dropout = nn.Dropout(drop_rate)
         self.bn2 = nn.BatchNorm2d(self.out_planes)
         self.conv2 = nn.Conv2d(self.out_planes, self.out_planes, kernel_size=3, stride=1, padding=1, bias=False)
 
