@@ -20,15 +20,18 @@ $ pip install torch-resnet
 import torch
 
 import torch_resnet
-from torch_resnet.utils import count_layer
+from torch_resnet.utils import count_layer, count_parameters
 
 model = torch_resnet.PreActResNet50()  # Build a backbone Resnet50 with pre-activation
 model.set_head(nn.Linear(model.out_planes, 10))  # Set a final linear head
 
 count_layers(model)  # -> 54 (In the original paper they do not count shortcut/downsampling layers)
+count_parameters(model) / 10**6  # Nb. parameters in millions
 
 out = model(torch.randn(1, 3, 224, 224))
 ```
+
+See `example/example.py` for a more complete example.
 
 ## Results
 
