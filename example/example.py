@@ -1,7 +1,6 @@
 """Reproducing cifar results with ResNets architectures"""
 
 import argparse
-import os
 import pathlib
 from typing import Union
 
@@ -169,8 +168,11 @@ def main(
     metrics_handler = metric.MetricsHandler(
         [
             metric.Accuracy(),
+            metric.PytorchMetric(criterion, "Loss", False, True),  # Add val loss
         ]
     )
+
+    metrics_handler.set_validation_metric(0)  # Set Accuracy as the validation metric
 
     # Trainer
     trainer = PytorchTrainer(
