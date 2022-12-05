@@ -11,9 +11,9 @@ to smaller images (32x32), the initial layers conv 7x7 and max_pool are replaced
 Finally, we implement wide resnets (with or without pre-activation) for Cifar and ImageNet following [3].
 
 Additional models can easily be created using the default class ResNet or PreActResNet.
-It is also possible to create your own block following the same model as those implemented. (To create for instance the different variations of resnets proposed in [1], [2])
+It is also possible to create your own block following the same model as those implemented.
 
-We use by default projection shortcuts whenever they are required (option B [1]) but we have also implemented option A and C, and more can be added following the same template.
+We use by default projection shortcuts whenever they are required (option B from [1]) but we have also implemented option A (IdentityShortcut) and C (FullProjectionShortcut), and more can be added following the same template. For instance we introduce our own shortcut: ConvolutionShortcut. It does a 3x3 convolution on the shortcut path when dimensions do not match (vs the 1x1 conv of the ProjectionShortcut).
 
 We have validated our implementation by testing it on Cifar10/Cifar100 (See Results).
 
@@ -63,29 +63,29 @@ Follow the link to access the training curves for each model and each seed used 
 |ResNet44             |0.7M  |[7.47 $\pm$ 0.19](https://tensorboard.dev/experiment/Vp32WK2GTEu6EkyTdAc9gg)    |7.17 [1]           |30.88 $\pm$ 0.22                                                              |xxx                 |
 |ResNet56             |0.9M  |[7.04 $\pm$ 0.26](https://tensorboard.dev/experiment/I6RV0GFqQni9LnWxRnBFWw)    |6.97 [1]           |30.15 $\pm$ 0.29                                                              |xxx                 |
 |ResNet110            |1.7M  |[6.60 $\pm$ 0.09](https://tensorboard.dev/experiment/oh0WxpW0Sw6Yrq5vRBWbVg)    |6.61 $\pm$ 0.16 [1]|28.99 $\pm$ 0.22                                                              |xxx                 |
-|ResNet164            |1.7M  |[**5.97** $\pm$ 0.20](https://tensorboard.dev/experiment/obTXYd9NSx2xErmzvHwzjw)|xxx                |25.79 $\pm$ 0.51                                                              |25.16 [2]           |
+|ResNet164            |1.7M  |[**5.97** $\pm$ 0.20](https://tensorboard.dev/experiment/obTXYd9NSx2xErmzvHwzjw)|xxx                |**25.79** $\pm$ 0.51                                                          |25.16 [2]           |
 |ResNet1001*          |10.3M |[7.95](https://tensorboard.dev/experiment/pZCAbqaoQR2I2T9mLGZZzg)               |xxx                |29.94                                                                         |27.82 [2]           |
 |ResNet1202           |19.4M |[7.90](https://tensorboard.dev/experiment/dUMT2GoDR7GgDgnun6oDLA)               |7.93 [1]           |33.20                                                                         |xxx                 |
 |PreActResNet20       |0.3M  |[8.61 $\pm$ 0.23](https://tensorboard.dev/experiment/RlKrhoLnRA6ptZcns3R7fA)    |xxx                |33.40 $\pm$ 0.30                                                              |xxx                 |
-|PreActResNet32       |0.5M  |[7.76 $\pm$ 0.10](https://tensorboard.dev/experiment/LcNVsEdzSBKeZJygGBTpEw)    |xxx                |xx.xx $\pm$ x.xx                                                              |xxx                 |
+|PreActResNet32       |0.5M  |[7.76 $\pm$ 0.10](https://tensorboard.dev/experiment/LcNVsEdzSBKeZJygGBTpEw)    |xxx                |32.02 $\pm$ 0.27                                                              |xxx                 |
 |PreActResNet44       |0.7M  |[7.63 $\pm$ 0.10](https://tensorboard.dev/experiment/I4yJquNxQ8eDdgKcxUDE7A)    |xxx                |30.78 $\pm$ 0.17                                                              |xxx                 |
 |PreActResNet56       |0.9M  |[7.42 $\pm$ 0.13](https://tensorboard.dev/experiment/XdcNemL8Ta2WbVXWq1aTeg)    |xxx                |30.18 $\pm$ 0.39                                                              |xxx                 |
 |PreActResNet110      |1.7M  |[6.79 $\pm$ 0.12](https://tensorboard.dev/experiment/TpDZKZmqTlS6NyFVL1ebAQ)    |xxx                |28.45 $\pm$ 0.25                                                              |xxx                 |
 |PreActResNet164      |1.7M  |[5.61 $\pm$ 0.16](https://tensorboard.dev/experiment/L4V78FG7T2a4OYxAGnN7jQ)    |5.46 [2]           |25.23 $\pm$ 0.21                                                              |24.33 [2]           |
-|PreActResNet1001     |10.3M |[**4.92**](https://tensorboard.dev/experiment/VUM0SW35Rc24wasG8S79GA)           |4.89 $\pm$ 0.14 [2]|23.18                                                                         |22.68 $\pm$ 0.22 [2]|
+|PreActResNet1001     |10.3M |[**4.92**](https://tensorboard.dev/experiment/VUM0SW35Rc24wasG8S79GA)           |4.89 $\pm$ 0.14 [2]|**23.18**                                                                     |22.68 $\pm$ 0.22 [2]|
 |PreActResNet1202     |19.4M |[6.66](https://tensorboard.dev/experiment/e7WPBDcbRwuZRJReQsoPFg)               |xxx                |27.65                                                                         |xxx                 |
-|ResNet18-small       |11.2M |5.88 $\pm$ 0.15                                                                 |xxx                |26.74 $\pm$ 0.42                                                              |xxx                 |
-|ResNet34-small       |21.3M |5.50 $\pm$ 0.17                                                                 |xxx                |25.34 $\pm$ 0.29                                                              |xxx                 |
-|ResNet50-small       |23.5M |5.86 $\pm$ 0.30                                                                 |xxx                |25.20 $\pm$ 0.89                                                              |xxx                 |
-|ResNet101-small      |42.5M |**5.45** $\pm$ 0.14                                                             |xxx                |**23.93** $\pm$ 0.56                                                          |xxx                 |
-|PreActResNet18-small |11.2M |5.65 $\pm$ 0.12                                                                 |xxx                |25.46 $\pm$ 0.34                                                              |xxx                 |
-|PreActResNet34-small |21.3M |5.29 $\pm$ 0.17                                                                 |xxx                |24.75 $\pm$ 0.31                                                              |xxx                 |
-|PreActResNet50-small |23.5M |5.83 $\pm$ 0.47                                                                 |xxx                |23.97 $\pm$ 0.36                                                              |xxx                 |
-|PreActResNet101-small|42.5M |**5.18** $\pm$ 0.11                                                             |xxx                |**23.69** $\pm$ 0.41                                                          |xxx                 |
+|ResNet18-small       |11.2M |[5.88 $\pm$ 0.15](https://tensorboard.dev/experiment/CeMWgwkzSwOsgQK79422sg)    |xxx                |26.74 $\pm$ 0.42                                                              |xxx                 |
+|ResNet34-small       |21.3M |[5.50 $\pm$ 0.17](https://tensorboard.dev/experiment/kIDACG9AQreEGmQWNy9BgA)    |xxx                |25.34 $\pm$ 0.29                                                              |xxx                 |
+|ResNet50-small       |23.5M |[5.86 $\pm$ 0.30](https://tensorboard.dev/experiment/5aybpi2SRgqNyyqk6G31yw)    |xxx                |25.20 $\pm$ 0.89                                                              |xxx                 |
+|ResNet101-small      |42.5M |[**5.45** $\pm$ 0.14](https://tensorboard.dev/experiment/oCVDgyw6QE2Te14IBg73HA)|xxx                |**23.93** $\pm$ 0.56                                                          |xxx                 |
+|PreActResNet18-small |11.2M |[5.65 $\pm$ 0.12](https://tensorboard.dev/experiment/0vnxKYlFR3yTPXaueKgyOg)    |xxx                |25.46 $\pm$ 0.34                                                              |xxx                 |
+|PreActResNet34-small |21.3M |[5.29 $\pm$ 0.17](https://tensorboard.dev/experiment/eC8EEvTmSa6AQzNP7rRAnQ)    |xxx                |24.75 $\pm$ 0.31                                                              |xxx                 |
+|PreActResNet50-small |23.5M |[5.83 $\pm$ 0.47](https://tensorboard.dev/experiment/Nv6afoQgT1u29nwIE7S7QQ)    |xxx                |23.97 $\pm$ 0.36                                                              |xxx                 |
+|PreActResNet101-small|42.5M |[**5.18** $\pm$ 0.11](https://tensorboard.dev/experiment/ExFlD37jSPuguDQnjBS5gQ)|xxx                |**23.69** $\pm$ 0.41                                                          |xxx                 |
 
 \* ResNet1001 cannot be trained with AMP (due to training instability) thus it was trained without AMP. Also, please note that AMP usually leads to slightly worst performances, therefore most of our results here are probably underestimated.
 
-Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances.  When dropping AMP and taking the max value rather than the last value, we also reach better performances. (We only tested on PreActResNet164 and PreActResNet1001).
+Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances.  When dropping AMP and taking the max value rather than the last value, we also reach better performances. (We only tested on PreActResNet164 and PreActResNet1001 where results where slighlty behind the paper).
 
 |Model (No Amp, best)|Params|Cifar100                                                                      |Cifar100 (paper)    |
 |:-                  |:---- |:-----                                                                        |:----               |
@@ -93,11 +93,24 @@ Note that in [2] and in most github implementation, the test set is used as a va
 |PreActResNet1001    |10.3M |22.86                                                                         |22.68 $\pm$ 0.22 [2]|
 
 
+We quickly tried our implementations for shortcuts (with AMP and last model evalutation)
 
 
-## Analysis
+|Model                    |Params|Cifar10                                                                      |Cifar100             |
+|:-                       |:---- |:-----                                                                       |:-                   |
+|ResNet20 (Proj)          |0.27M |[8.64 $\pm$ 0.16](https://tensorboard.dev/experiment/Wp0BnqgsQAiNlda6jbHyNw) |xxx                  |
+|ResNet20-Id              |0.27M |8.65 $\pm$ 0.08                                                              |xxx                  |
+|ResNet20-FullProj        |0.28M |8.22 $\pm$ 0.14                                                              |xxx                  |
+|ResNet20-Conv            |0.29M |8.41 $\pm$ 0.19                                                              |xxx                  |
+|PreActResNet164 (Proj)   |1.70M |[5.61 $\pm$ 0.16](https://tensorboard.dev/experiment/L4V78FG7T2a4OYxAGnN7jQ) |25.23 $\pm$ 0.21     |
+|PreActResNet164-Id       |1.68M |5.52 $\pm$ 0.14                                                              |24.71 $\pm$ 0.12     |
+|PreActResNet164-FullProj |3.19M |Failed (90.0)                                                                |Failed (99.0)        |
+|PreActResNet164-Conv     |2.06M |5.55 $\pm$ 0.18                                                              |23.86 $\pm$ 0.16     |
 
-TODO
+More works are needed to fully investigate shortcuts but intuitevely and from the few experiments we've done, it seems that they all work correctly. FullProjectionShortcut
+should not be used as it increases instability (no more true shortcuts) when training. The introduced convolutional shortcut (3x3 conv instead of 1x1) seems to
+help on Cifar100. Finally it seems that with Identity shortcut for PreActResNet164 (+ No Amp and best model evaluation) as in [2], we would reach around the same
+performances of 24.33 on Cifar100.
 
 ## References
 

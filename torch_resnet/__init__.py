@@ -17,6 +17,7 @@ Reference:
 
 from .preact_resnet import *
 from .resnet import *
+from .shortcut import *
 
 
-__version__ = "0.0.1"
+__version__ = "0.0.2.dev"

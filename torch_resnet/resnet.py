@@ -10,6 +10,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from .avg_2d import Avg2d
+from .shortcut import ProjectionShortcut
 
 
 __all__ = [
@@ -20,8 +21,6 @@ __all__ = [
     "ResNet101",
     "ResNet152",
     "ResNet200",
-    "WideResNet50_2",
-    "WideResNet101_2",
     "ResNet20",
     "ResNet32",
     "ResNet44",
@@ -39,13 +38,23 @@ __all__ = [
 class BasicBlock(nn.Module):
     """Basic bloc"""
 
-    def __init__(self, in_planes: int, planes: int, stride=1, width=1, drop_rate=0.0):
+    def __init__(
+        self,
+        in_planes: int,
+        planes: int,
+        shortcut: type = ProjectionShortcut,
+        stride=1,
+        width=1,
+        drop_rate=0.0,
+    ):
         """Constructor
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
+            shortcut (type): Constructor for shortcut blocks
+                Default: ProjectionShortcut
             stride (int): Stride of the first convolution to downsample spatial dimensions
                 usally set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet.
@@ -60,17 +69,15 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(self.out_planes, self.out_planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(self.out_planes)
 
-        if stride != 1 or in_planes != self.out_planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.out_planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.out_planes),
-            )
+        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))
+        if self.shortcut[0].requires_activation:
+            self.shortcut.insert(1, nn.BatchNorm2d(self.out_planes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(self.dropout(out)))  # Dropout after relu, and before second conv cf [3]
 
-        out += self.shortcut(x) if hasattr(self, "shortcut") else x
+        out += self.shortcut(x)
 
         return F.relu(out)
 
@@ -83,13 +90,23 @@ class Bottleneck(nn.Module):
 
     expansion = 4
 
-    def __init__(self, in_planes: int, planes: int, stride=1, width=1, drop_rate=0.0):
+    def __init__(
+        self,
+        in_planes: int,
+        planes: int,
+        shortcut: type = ProjectionShortcut,
+        stride=1,
+        width=1,
+        drop_rate=0.0,
+    ):
         """Constructor
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
+            shortcut (type): Constructor for shortcut blocks
+                Default: ProjectionShortcut
             stride (int): Stride of the 3x3 convolution to downsample spatial dimensions
                 usally set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet. (Increase only 3x3 conv features)
@@ -109,18 +126,16 @@ class Bottleneck(nn.Module):
         self.conv3 = nn.Conv2d(mid_planes, self.out_planes, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(self.out_planes)
 
-        if stride != 1 or in_planes != self.out_planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.out_planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.out_planes),
-            )
+        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))
+        if self.shortcut[0].requires_activation:
+            self.shortcut.insert(1, nn.BatchNorm2d(self.out_planes))
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = F.relu(self.bn2(self.conv2(out)))
         out = self.bn3(self.conv3(out))
 
-        out += self.shortcut(x) if hasattr(self, "shortcut") else x
+        out += self.shortcut(x)
 
         return F.relu(out)
 
@@ -130,8 +145,9 @@ class ResNet(nn.Module):
 
     def __init__(
         self,
-        block: type,
         dimensions: List[Tuple[int, int]],
+        block: type = BasicBlock,
+        shortcut: type = ProjectionShortcut,
         in_planes=3,
         width=1,
         drop_rate=0.0,
@@ -140,16 +156,21 @@ class ResNet(nn.Module):
         """Constructor
 
         Args:
-            block (type): Constructor of a block (PreActBlock or Bottleneck or your own)
             dimensions (List[Tuple[int, int]]): All the dimensions of the resnet as (num_blocks, planes)
                 for each main layer.
+            block (type): Constructor of a block (BasicBlock or Bottleneck or your own)
+                Default: BasicBlock
+            shortcut (type): Constructor for shortcut blocks
+                Default: ProjectionShortcut
             in_planes (int): Number of channels in the input images
                 Default: 3 (standard images)
             width (int): Width of Wide-Resnet
                 Default: 1 (Standard Resnet)
             drop_rate (float): Dropout rate for Wide-Resnet with basic block
+                Default: 0.0
             small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
-                This results in changing the first 7x7 conv by a 3x3 conv
+                This results in changing the first 7x7 conv by a 3x3 conv without stride and max pooling
+                Default: False
         """
         super().__init__()
 
@@ -173,19 +194,19 @@ class ResNet(nn.Module):
         strides = [1] + [2] * (len(dimensions) - 2)
         layers: List[nn.Module] = []
         for (num_blocks, planes), stride in zip(dimensions[1:], strides):
-            layers.append(self._make_layer(block, planes, num_blocks, stride, width, drop_rate))
+            layers.append(self._make_layer(block, shortcut, planes, num_blocks, stride, width, drop_rate))
 
         self.layers = nn.Sequential(*layers)
         self.avgpool = Avg2d()
         self.head: nn.Module = nn.Identity()
 
     def _make_layer(
-        self, block: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
+        self, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
     ) -> nn.Module:
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride_ in strides:
-            layers.append(block(self.out_planes, planes, stride_, width, drop_rate))
+            layers.append(block(self.out_planes, planes, shortcut, stride_, width, drop_rate))
             self.out_planes = layers[-1].out_planes
         return nn.Sequential(*layers)
 
@@ -220,17 +241,14 @@ class ResNet18(ResNet):
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            BasicBlock, list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512])), BasicBlock, **kwargs)
 
 
 class ResNet34(ResNet):
@@ -239,55 +257,50 @@ class ResNet34(ResNet):
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            BasicBlock, list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), BasicBlock, **kwargs)
 
 
 class ResNet50(ResNet):
     """Resnet 50
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
+
+    WideResNet50-2 can easily be build by passing width=2
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            Bottleneck, list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
 
 
 class ResNet101(ResNet):
     """Resnet 101
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
+
+    WideResNet101-2 can easily be build by passing width=2
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            Bottleneck, list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
 
 
 class ResNet152(ResNet):
@@ -296,17 +309,14 @@ class ResNet152(ResNet):
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            Bottleneck, list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
 
 
 class ResNet200(ResNet):
@@ -315,62 +325,14 @@ class ResNet200(ResNet):
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
-    def __init__(self, in_planes=3, small_images=False):
+    def __init__(self, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(
-            Bottleneck,
-            list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512])),
-            in_planes,
-            small_images=small_images,
-        )
-
-
-class WideResNet50_2(ResNet):  # pylint: disable=invalid-name
-    """WideResnet 50-2
-
-    Was designed for ImageNet but can be adapted to Cifar with small_images parameter
-    """
-
-    def __init__(self, in_planes=3, small_images=False):
-        """Constructor
-
-        Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
-        """
-        super().__init__(
-            Bottleneck,
-            list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])),
-            in_planes,
-            width=2,
-            small_images=small_images,
-        )
-
-
-class WideResNet101_2(ResNet):  # pylint: disable=invalid-name
-    """WideResnet 101-2
-
-    Was designed for ImageNet but can be adapted to Cifar with small_images parameter
-    """
-
-    def __init__(self, in_planes=3, small_images=False):
-        """Constructor
-
-        Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
-        """
-        super().__init__(
-            Bottleneck, list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512])), in_planes, small_images=small_images
-        )
+        super().__init__(list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
 
 
 # Designed for Cifar
@@ -382,14 +344,14 @@ class ResNet20(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(BasicBlock, list(zip([1, 3, 3, 3], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 3, 3, 3], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
 
 
 class ResNet32(ResNet):
@@ -398,14 +360,14 @@ class ResNet32(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(BasicBlock, list(zip([1, 5, 5, 5], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 5, 5, 5], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
 
 
 class ResNet44(ResNet):
@@ -414,14 +376,14 @@ class ResNet44(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(BasicBlock, list(zip([1, 7, 7, 7], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 7, 7, 7], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
 
 
 class ResNet56(ResNet):
@@ -430,14 +392,14 @@ class ResNet56(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(BasicBlock, list(zip([1, 9, 9, 9], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 9, 9, 9], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
 
 
 class ResNet110(ResNet):
@@ -446,14 +408,14 @@ class ResNet110(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
-        super().__init__(BasicBlock, list(zip([1, 18, 18, 18], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 18, 18, 18], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
 
 
 class ResNet164(ResNet):
@@ -462,15 +424,15 @@ class ResNet164(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         # Following [2] -> Usage of bottle neck
-        super().__init__(Bottleneck, list(zip([1, 18, 18, 18], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(list(zip([1, 18, 18, 18], [16, 16, 32, 64])), Bottleneck, small_images=small_images, **kwargs)
 
 
 class ResNet1001(ResNet):
@@ -479,15 +441,17 @@ class ResNet1001(ResNet):
     Was designed for Cifar.
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         # Following [2] -> Usage of bottle neck
-        super().__init__(Bottleneck, list(zip([1, 111, 111, 111], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(
+            list(zip([1, 111, 111, 111], [16, 16, 32, 64])), Bottleneck, small_images=small_images, **kwargs
+        )
 
 
 class ResNet1202(ResNet):
@@ -496,15 +460,17 @@ class ResNet1202(ResNet):
     Was designed for Cifar. Performs poorly according to [1].
     """
 
-    def __init__(self, in_planes=3):
+    def __init__(self, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         # Following [1] -> Default block
-        super().__init__(BasicBlock, list(zip([1, 200, 200, 200], [16, 16, 32, 64])), in_planes, small_images=True)
+        super().__init__(
+            list(zip([1, 200, 200, 200], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class WideResNet16(ResNet):
@@ -513,26 +479,22 @@ class WideResNet16(ResNet):
     Was designed for Cifar.
 
     The number of layer matches the paper [3] and does not follow [1] and [2]:
-    The shortcut layers (2 for these models) are added to the count.
+    The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, in_planes=3, width=1, drop_rate=0.3):
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            width (int): width of the resnet
-                Default: 1 (No width <=> PreActResNet14)
-            drop_date (float): Dropout rate in wide basic block
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         super().__init__(
-            BasicBlock,
             list(zip([1, 2, 2, 2], [16, 16, 32, 64])),
-            in_planes,
-            width=width,
+            BasicBlock,
             drop_rate=drop_rate,
-            small_images=True,
+            small_images=small_images,
+            **kwargs,
         )
 
 
@@ -542,26 +504,22 @@ class WideResNet28(ResNet):
     Was designed for Cifar.
 
     The number of layer matches the paper [3] and does not follow [1] and [2]:
-    The shortcut layers (2 for these models) are added to the count.
+    The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, in_planes=3, width=1, drop_rate=0.3):
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            width (int): width of the resnet
-                Default: 1 (No width <=> PreActResNet26)
-            drop_date (float): Dropout rate in wide basic block
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         super().__init__(
-            BasicBlock,
             list(zip([1, 4, 4, 4], [16, 16, 32, 64])),
-            in_planes,
-            width=width,
+            BasicBlock,
             drop_rate=drop_rate,
-            small_images=True,
+            small_images=small_images,
+            **kwargs,
         )
 
 
@@ -571,24 +529,20 @@ class WideResNet40(ResNet):
     Was designed for Cifar.
 
     The number of layer matches the paper [3] and does not follow [1] and [2]:
-    The shortcut layers (2 for these models) are added to the count.
+    The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, in_planes=3, width=1, drop_rate=0.3):
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
         """Constructor
 
         Args:
-            in_planes (int): Number of channels in the input images
-                Default: 3 (RGB images)
-            width (int): width of the resnet
-                Default: 1 (No width <=> PreActResNet38)
-            drop_date (float): Dropout rate in wide basic block
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
         """
         super().__init__(
-            BasicBlock,
             list(zip([1, 6, 6, 6], [16, 16, 32, 64])),
-            in_planes,
-            width=width,
+            BasicBlock,
             drop_rate=drop_rate,
-            small_images=True,
+            small_images=small_images,
+            **kwargs,
         )

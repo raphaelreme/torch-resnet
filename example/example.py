@@ -28,29 +28,35 @@ STDS = {
 }
 
 
-def parse_model_name(model_name: str) -> Union[torch_resnet.ResNet, torch_resnet.PreActResNet]:
+def parse_model_name(model_name: str, shortcut_name: str) -> Union[torch_resnet.ResNet, torch_resnet.PreActResNet]:
     """Parse model name
 
-    Format: ClassName[-small][-width] (small and width are exclusive)
+    Format: ClassName[-width][-drop_rate]
 
-    Able to parse WideResNet40-10 or ResNet50-small
+    For instance, PreActResNet20 results in a PreActResNet20 with the default width (1) and drop_rate (0.0)
+                  WideResNet40-10 results in a WideResNet40 with 10 width and the default drop rate (0.3)
+                  WideResNet40-10-0.0 results in the same model without dropout
+
+    To create a PreActResNet20 with dropout you have to precise the width (1):
+                  PreActResNet20-0.3 results in an error as 0.3 is interpreted as the width
+                  PreActResNet20-1-0.3 is what you are looking for
     """
     model_name, *specs = model_name.split("-")
-    if len(specs) > 1:
-        raise ValueError(f"Too many specifications for {model_name}: {specs}")
 
-    kwargs: dict = {}
+    kwargs: dict = {"small_images": True}
+    kwargs["shortcut"] = getattr(torch_resnet, shortcut_name)
+
     if specs:
-        if specs[0] == "small":
-            kwargs["small_images"] = True
-        else:
-            kwargs["width"] = int(specs[0])
+        kwargs["width"] = int(specs.pop(0))
+
+    if specs:
+        kwargs["drop_rate"] = float(specs.pop(0))
+
+    if specs:
+        raise ValueError(f"Too many specifications for {model_name}: {specs}. Expect {model_name}[-width]-[drop_rate]")
 
     model: Union[torch_resnet.ResNet, torch_resnet.PreActResNet]
-    try:
-        model = getattr(torch_resnet, model_name)(**kwargs)
-    except AttributeError as exc:
-        raise ValueError(f"Invalid model name {model_name}") from exc
+    model = getattr(torch_resnet, model_name)(**kwargs)
 
     return model
 
@@ -75,6 +81,7 @@ def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_s
 
 def main(
     model_name: str,
+    shortcut_name: str,
     dataset: str,
     checkpoint: str,
     epochs: int,
@@ -136,7 +143,7 @@ def main(
     print(f"Using {device}.")
 
     # Model
-    model = parse_model_name(model_name)
+    model = parse_model_name(model_name, shortcut_name)
     model.set_head(torch.nn.Linear(model.out_planes, len(trainset.classes)))
     model.to(device)
     print(model)
@@ -181,7 +188,7 @@ def main(
         scheduler,
         metrics_handler,
         device,
-        output_dir=f"experiments/{dataset}/{model_name}/{seed}",
+        output_dir=f"experiments/{dataset}/{model_name}-{shortcut_name}/{seed}",
         save_mode="small",
         use_amp=use_amp,
     )
@@ -208,13 +215,14 @@ def main(
 
     print(yaml.dump(metrics))
 
-    with open(f"experiments/{dataset}/{model_name}/{seed}/metrics.yml", "w") as file:
+    with open(f"experiments/{dataset}/{model_name}-{shortcut_name}/{seed}/metrics.yml", "w") as file:
         file.write(yaml.dump(metrics))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a resnet on cifar10/100")
     parser.add_argument("--model", default="ResNet20", help="Model name")
+    parser.add_argument("--shortcut", default="ProjectionShortcut", help="Shortcut name")
     parser.add_argument("--data", default="CIFAR10", help="Dataset [CIFAR10/CIFAR100]")
     parser.add_argument("--ep", default=160, type=int, help="epochs")
     parser.add_argument("--lr", default=0.1, type=float, help="learning rate")
@@ -232,13 +240,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    exp_path = pathlib.Path("experiments") / f"{args.data}" / f"{args.model}" / f"{args.seed}"
+    exp_path = pathlib.Path("experiments") / args.data / f"{args.model}-{args.shortcut}" / f"{args.seed}"
     exp_path.mkdir(parents=True)
     StdFileRedirection(exp_path / "outputs.log")
 
     print(args)
     main(
         args.model,
+        args.shortcut,
         args.data,
         args.ckpt,
         args.ep,

@@ -26,7 +26,7 @@ def main(data_dir: str):
     root = pathlib.Path(data_dir)
     assert root.is_dir()
 
-    print(f"{'model':22}|{'mean':10}|{'std':10}|{'min':10}|{'max':10}|{'Params':11}|{'n_runs':8}")
+    print(f"{'model':40}|{'mean':10}|{'std':10}|{'min':10}|{'max':10}|{'Params':11}|{'n_runs':8}")
 
     for model_path in sorted_alphanumeric(list(root.iterdir())):
         if not model_path.is_dir():
@@ -44,7 +44,7 @@ def main(data_dir: str):
 
         if errors:
             print(
-                f"{model_name:22}|{round(np.mean(errors), 2):10}|{round(np.std(errors), 2):10}|{round(min(errors), 2):10}|{round(max(errors), 2):10}|{round(metrics['num_parameters'], 2):10}M|{len(errors):8}"
+                f"{model_name:40}|{round(np.mean(errors), 2):10}|{round(np.std(errors), 2):10}|{round(min(errors), 2):10}|{round(max(errors), 2):10}|{round(metrics['num_parameters'], 2):10}M|{len(errors):8}"
             )
 
 
