@@ -9,6 +9,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from . import init
 from .avg_2d import Avg2d
 from .shortcut import ProjectionShortcut
 
@@ -152,6 +153,7 @@ class ResNet(nn.Module):
         width=1,
         drop_rate=0.0,
         small_images=False,
+        zero_init_residual=False,
     ):
         """Constructor
 
@@ -170,6 +172,8 @@ class ResNet(nn.Module):
                 Default: 0.0
             small_images (bool): With small images (size < 100px), let's rather use Cifar version of ResNet
                 This results in changing the first 7x7 conv by a 3x3 conv without stride and max pooling
+                Default: False
+            zero_init_residual (bool): Initialize the residual branch last bn weight at 0 (See `resnet_init`)
                 Default: False
         """
         super().__init__()
@@ -199,6 +203,8 @@ class ResNet(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.avgpool = Avg2d()
         self.head: nn.Module = nn.Identity()
+
+        init.resnet_init(self, zero_init_residual)
 
     def _make_layer(
         self, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
