@@ -15,6 +15,8 @@ It is also possible to create your own block following the same model as those i
 
 We use by default projection shortcuts whenever they are required (option B from [1]) but we have also implemented option A (IdentityShortcut) and C (FullProjectionShortcut), and more can be added following the same template. For instance we introduce our own shortcut: ConvolutionShortcut. It does a 3x3 convolution on the shortcut path when dimensions do not match (vs the 1x1 conv of the ProjectionShortcut).
 
+The models are initialized following [1] (and more precisely *Delving deep into rectifiers: Surpassing human-level performance on ImageNet classification - He, K. et al. (2015)*), we also implement the slight initialization improvement from https://arxiv.org/abs/1706.02677, and adapt it to pre-activation resnets.
+
 We have validated our implementation by testing it on Cifar10/Cifar100 (See Results).
 
 ## Install
@@ -47,16 +49,15 @@ See `example/example.py` for a more complete example.
 
 Results obtained with `example/example.py` following closely papers indications. Most are reported as mean $\pm$ std (on 5 runs with different seed). If a single number is reported, only a single run has been done due to computational time. All training are done with Automatique Mixed Precision.
 
-For all resnets and pre-act resnets, the learning rate is scheduled following [1] and [2] with a warm-up in the 400 first iterations at 0.01. The initial learning rate is then set at 0.1 and decreased by 10 at 32k and 48k
-iterations. Training is stopped after 160 epochs (~62.5k iterations).
+For all resnets and pre-act resnets, the learning rate is scheduled following [1] and [2] with a warm-up in the 400 first iterations at 0.01. The initial learning rate is then set at 0.1 and decreased by 10 at 32k and 48k iterations. Training is stopped after 160 epochs (~62.5k iterations).
 
 Contrary to [1], the training set is not split in 45k/5k to perform validation, and we directly took the final model to evaluate the performances on the
-test set (No validation is done). Also on Cifar [1] is using option A (Identity shortcut), whereas we use the default option B (Projection shortcut when required).
+test set (No validation is done). Also on Cifar [1] is using option A (Identity shortcut), whereas we use the default option B (Projection shortcut when required). Also, results were obtained before commit [4f15ff0fe](https://github.com/raphaelreme/torch-resnet/commit/4f15ff0fe780e93a9903550e58f6b2215d4e17ab) and thus without the correct initialization.
 
-Follow the link to access the training curves for each model and each seed used (111, 222, 333, 444, 555). (Upload in coming...)
+Follow the link to access the training curves for each model on Cifar10 and each seed used (111, 222, 333, 444, 555).
 
 
-|Model                |Params|Cifar10                                                                         |Cifar10 (paper)    |Cifar100                                                                      |Cifar100 (paper)    |
+|Model (Amp, Last)    |Params|Cifar10                                                                         |Cifar10 (paper)    |Cifar100                                                                      |Cifar100 (paper)    |
 |:-                   |:---- |:-----                                                                          |:-----             |:-----                                                                        |:----               |
 |ResNet20             |0.3M  |[8.64 $\pm$ 0.16](https://tensorboard.dev/experiment/Wp0BnqgsQAiNlda6jbHyNw)    |8.75 [1]           |33.23 $\pm$ 0.32                                                              |xxx                 |
 |ResNet32             |0.5M  |[7.64 $\pm$ 0.23](https://tensorboard.dev/experiment/jS3iZpYnSXe0JWbmdmsJRg)    |7.51 [1]           |31.64 $\pm$ 0.54                                                              |xxx                 |
@@ -85,32 +86,55 @@ Follow the link to access the training curves for each model and each seed used 
 
 \* ResNet1001 cannot be trained with AMP (due to training instability) thus it was trained without AMP. Also, please note that AMP usually leads to slightly worst performances, therefore most of our results here are probably underestimated.
 
-Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances.  When dropping AMP and taking the max value rather than the last value, we also reach better performances. (We only tested on PreActResNet164 and PreActResNet1001 where results where slighlty behind the paper).
+Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances. Also these results are missing the correct resnet initialization from [1]. 
 
-|Model (No Amp, best)|Params|Cifar100                                                                      |Cifar100 (paper)    |
+<!-- |Model (No Amp, best)|Params|Cifar100                                                                      |Cifar100 (paper)    | 
 |:-                  |:---- |:-----                                                                        |:----               |
 |PreActResNet164     |1.7M  |24.83 $\pm$ 0.16                                                              |24.33 [2]           |
-|PreActResNet1001    |10.3M |22.86                                                                         |22.68 $\pm$ 0.22 [2]|
+|PreActResNet1001    |10.3M |22.86                                                                         |22.68 $\pm$ 0.22 [2]|-->
 
 
 We quickly tried our implementations for shortcuts (with AMP and last model evalutation)
 
 
-|Model                    |Params|Cifar10                                                                      |Cifar100             |
-|:-                       |:---- |:-----                                                                       |:-                   |
-|ResNet20 (Proj)          |0.27M |[8.64 $\pm$ 0.16](https://tensorboard.dev/experiment/Wp0BnqgsQAiNlda6jbHyNw) |xxx                  |
-|ResNet20-Id              |0.27M |8.65 $\pm$ 0.08                                                              |xxx                  |
-|ResNet20-FullProj        |0.28M |8.22 $\pm$ 0.14                                                              |xxx                  |
-|ResNet20-Conv            |0.29M |8.41 $\pm$ 0.19                                                              |xxx                  |
-|PreActResNet164 (Proj)   |1.70M |[5.61 $\pm$ 0.16](https://tensorboard.dev/experiment/L4V78FG7T2a4OYxAGnN7jQ) |25.23 $\pm$ 0.21     |
-|PreActResNet164-Id       |1.68M |5.52 $\pm$ 0.14                                                              |24.71 $\pm$ 0.12     |
-|PreActResNet164-FullProj |3.19M |Failed (90.0)                                                                |Failed (99.0)        |
-|PreActResNet164-Conv     |2.06M |5.55 $\pm$ 0.18                                                              |23.86 $\pm$ 0.16     |
+|Model (No Amp, Best)            |Params|Cifar10                                                                      |Cifar100             |
+|:-                              |:---- |:-----                                                                       |:-                   |
+|ResNet20 (Proj)                 |0.27M |8.60 $\pm$ 0.18                                                              |xxx                  |
+|ResNet20-Id                     |0.27M |8.65 $\pm$ 0.08                                                              |xxx                  |
+|ResNet20-FullProj               |0.28M |8.22 $\pm$ 0.14                                                              |xxx                  |
+|ResNet20-Conv                   |0.29M |8.41 $\pm$ 0.19                                                              |xxx                  |
+|PreActResNet164 (Proj-Amp-Last) |1.73M |[5.61 $\pm$ 0.16](https://tensorboard.dev/experiment/L4V78FG7T2a4OYxAGnN7jQ) |25.23 $\pm$ 0.21     |
+|PreActResNet164-Id              |1.68M |5.52 $\pm$ 0.14                                                              |24.71 $\pm$ 0.12     |
+|PreActResNet164-FullProj        |3.19M |Failed (90.0)                                                                |Failed (99.0)        |
+|PreActResNet164-Conv            |2.06M |5.55 $\pm$ 0.18                                                              |23.86 $\pm$ 0.16     |
 
 More works are needed to fully investigate shortcuts but intuitevely and from the few experiments we've done, it seems that they all work correctly. FullProjectionShortcut
 should not be used as it increases instability (no more true shortcuts) when training. The introduced convolutional shortcut (3x3 conv instead of 1x1) seems to
-help on Cifar100. Finally it seems that with Identity shortcut for PreActResNet164 (+ No Amp and best model evaluation) as in [2], we would reach around the same
-performances of 24.33 on Cifar100.
+help on Cifar100 but increase the number of parameters and flops.
+
+Since [4f15ff0fe](https://github.com/raphaelreme/torch-resnet/commit/4f15ff0fe780e93a9903550e58f6b2215d4e17ab), resnets are intialized correctly which improves slightly
+the performances. Here we show some results with different architectures and shortcuts with the new initialization(s).
+
+|Model (No Amp, Best, Init)           |Params|Cifar10          |Cifar100          |
+|:-                                   |:---- |:-----           |:-                |
+|ResNet110 (Proj)                     |1.74M |6.61 $\pm$ 0.13  | 28.16 $\pm$ 0.23 |
+|ResNet110 (Proj, Zero init)          |1.74M |6.46 $\pm$ 0.17  | 28.01 $\pm$ 0.26 |
+|ResNet164 (Proj)                     |1.73M |5.94 $\pm$ 0.18  | 25.51 $\pm$ 0.16 |
+|ResNet164 (Proj, Zero init)          |1.73M |5.58 $\pm$ 0.12  | 24.96 $\pm$ 0.15 |
+|ResNet164-Id                         |1.68M |6.08 $\pm$ 0.12  | 25.86 $\pm$ 0.28 |
+|ResNet164-Id (Zero Init)             |1.68M |7.51 $\pm$ 0.07  | 33.51 $\pm$ 0.32 |
+|PreActResNet110 (Proj)               |1.74M |6.56 $\pm$ 0.20  | 28.19 $\pm$ 0.12 |
+|PreActResNet110 (Proj, Zero init)    |1.74M |6.58 $\pm$ 0.17  | 27.91 $\pm$ 0.24 |
+|PreActResNet164 (Proj)               |1.73M |5.60 $\pm$ 0.19  | 24.81 $\pm$ 0.28 |
+|PreActResNet164 (Proj, Zero init)    |1.73M |5.39 $\pm$ 0.12  | 24.42 $\pm$ 0.18 |
+|PreActResNet164-Id                   |1.68M |5.62 $\pm$ 0.12  | 24.42 $\pm$ 0.20 |
+|PreActResNet164-Id (Zero init)       |1.68M |7.32 $\pm$ 0.08  | 33.67 $\pm$ 0.25 |
+|PreActResNet1001 (Proj)              |10.35M|xxx              | 23.30 $\pm$ 0.31 |
+|PreActResNet1001 (Proj, Zero init)   |10.35M|xxx              | 22.03 $\pm$ 0.22 |
+|PreActResNet1001-Id                  |10.31M|xxx              | 21.64 $\pm$ 0.31 |
+
+First, we are now able to reproduce the results of [2] on Cifar100 with PreActResNet164 and PreActResNet1001 (24.33 and 22.68). Then, it shows that the new intialization improves the results on Cifar100 (Not so much for Cifar10 though). Finally, the zero residual initialization from https://arxiv.org/abs/1706.02677 (and extended for pre-activation) seems helpful when the shortcuts are the default projection shortcuts. With true identity shortcuts, the training is worst (probably because almost all layers are disabled at the beginning). One could try to apply the zero residual initialization only after a few layers. 
+
 
 ## References
 
