@@ -62,7 +62,7 @@ def parse_model_name(model_name: str, shortcut_name: str) -> Union[torch_resnet.
 
 
 def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler._LRScheduler:
-    """Build the scheduler used in [1] and [2]"""
+    """Build the scheduler used in [1] and [2] (resnets/preact resnets)"""
 
     def _lambda(step):
         if step <= 400:
@@ -79,6 +79,30 @@ def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_s
     return torch.optim.lr_scheduler.LambdaLR(optimizer, _lambda)
 
 
+def build_wide_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler._LRScheduler:
+    """Build the scheduler used in [3] (Wide resnets)
+
+    Yields better results than the original one
+    """
+
+    def _lambda(step):
+        if step <= 400:
+            return 0.1
+
+        if step <= 23000:
+            return 1.0
+
+        if step <= 46000:
+            return 0.2
+
+        if step <= 62000:
+            return 0.04
+
+        return 0.008
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, _lambda)
+
+
 def main(
     model_name: str,
     shortcut_name: str,
@@ -88,6 +112,8 @@ def main(
     lr: float,
     batch_size: int,
     weight_decay: float,
+    nesterov: bool,
+    wide_scheduler: bool,
     use_amp: bool,
     eval_best: bool,
     seed: int,
@@ -163,10 +189,14 @@ def main(
         [{"params": no_decay, "weight_decay": 0.0}, {"params": decay, "weight_decay": weight_decay}],
         lr=lr,
         momentum=0.9,
+        nesterov=nesterov,
     )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(trainset) / batch_size * epochs)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [32000, 48000], 0.1)
-    scheduler = build_resnet_scheduler(optimizer)
+    if wide_scheduler:
+        scheduler = build_wide_resnet_scheduler(optimizer)
+    else:
+        scheduler = build_resnet_scheduler(optimizer)
 
     # Criterion
     criterion = torch.nn.CrossEntropyLoss()
@@ -228,6 +258,8 @@ if __name__ == "__main__":
     parser.add_argument("--lr", default=0.1, type=float, help="learning rate")
     parser.add_argument("--bs", default=128, type=int, help="batch size")
     parser.add_argument("--wd", default=1e-4, type=float, help="weight decay")
+    parser.add_argument("--nesterov", action="store_true", help="Use nesterov momentum")
+    parser.add_argument("--wide-scheduler", action="store_true", help="Use Wide ResNet scheduler")
     parser.add_argument("--no-amp", action="store_true", help="Do not use AMP")
     parser.add_argument("--best", action="store_true", help="Eval best rather than last")
     parser.add_argument("--seed", default=666, type=int, help="Seed")
@@ -254,6 +286,8 @@ if __name__ == "__main__":
         args.lr,
         args.bs,
         args.wd,
+        args.nesterov,
+        args.wide_scheduler,
         not args.no_amp,
         args.best,
         args.seed,
