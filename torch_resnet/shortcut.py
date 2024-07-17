@@ -1,6 +1,5 @@
 """Different shortcut options"""
 
-
 import torch
 from torch import nn
 

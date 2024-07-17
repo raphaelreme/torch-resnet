@@ -14,10 +14,9 @@ Reference:
     Wide Residual Networks. https://arxiv.org/pdf/1605.07146
 """
 
-
 from .preact_resnet import *
 from .resnet import *
 from .shortcut import *
 
 
-__version__ = "0.0.2.dev2"
+__version__ = "0.0.2"

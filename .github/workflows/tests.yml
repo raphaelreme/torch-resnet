@@ -1,0 +1,53 @@
+name: Lint and Test
+
+# Triggered by other workflows or on any push on branches
+on:
+  push:
+    branches:
+      - "**"
+  workflow_call:
+  schedule:
+    - cron:  '45 14 15 * *'  # Program linting every 15th of each month at 14:45
+
+jobs:
+  main:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
+        exclude:  # Python < v3.8 does not support Apple Silicon ARM64.
+          - python-version: "3.7"
+            os: macos-latest
+        include:  # So run those legacy versions on Intel CPUs.
+          - python-version: "3.7"
+            os: macos-13
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies  # Install torch != 2.3.0 until https://github.com/pytorch/pytorch/issues/124897 is fixed
+        run: |
+          python -m pip install --upgrade pip
+          # pip install torch!=2.3.0
+          pip install -r requirements-dev.txt
+      - name: pylint
+        run: |
+          pylint torch_resnet
+      - name: mypy
+        run: |
+          mypy torch_resnet
+      - name: black
+        run: |
+          black --check .
+      # TODO
+      # - name: pytest
+      #   run: |
+      #     pytest
