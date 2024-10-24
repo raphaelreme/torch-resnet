@@ -43,6 +43,7 @@ class PreActBlock(nn.Module):
         self,
         in_planes: int,
         planes: int,
+        *,
         shortcut: type = ProjectionShortcut,
         stride=1,
         width=1,
@@ -94,6 +95,7 @@ class PreActBottleneck(nn.Module):
         self,
         in_planes: int,
         planes: int,
+        *,
         shortcut: type = ProjectionShortcut,
         stride=1,
         width=1,
@@ -146,6 +148,7 @@ class PreActResNet(nn.Module):
         self,
         dimensions: List[Tuple[int, int]],
         block: type = PreActBlock,
+        *,
         shortcut: type = ProjectionShortcut,
         in_planes=3,
         width=1,
@@ -190,7 +193,17 @@ class PreActResNet(nn.Module):
         strides = [1] + [2] * (len(dimensions) - 2)
         layers: List[nn.Module] = []
         for (num_blocks, planes), stride in zip(dimensions[1:], strides):
-            layers.append(self._make_layer(block, shortcut, planes, num_blocks, stride, width, drop_rate))
+            layers.append(
+                self._make_layer(
+                    block=block,
+                    shortcut=shortcut,
+                    planes=planes,
+                    num_blocks=num_blocks,
+                    stride=stride,
+                    width=width,
+                    drop_rate=drop_rate,
+                )
+            )
 
         self.layers = nn.Sequential(*layers)
         self.norm = nn.BatchNorm2d(self.out_planes)
@@ -200,7 +213,7 @@ class PreActResNet(nn.Module):
         init.resnet_init(self, zero_init_residual)
 
     def _make_layer(
-        self, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
+        self, *, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
     ) -> nn.Module:
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
