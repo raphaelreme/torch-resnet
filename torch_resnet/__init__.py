@@ -19,4 +19,4 @@ from .resnet import *
 from .shortcut import *
 
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
