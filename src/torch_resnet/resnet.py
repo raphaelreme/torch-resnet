@@ -1,33 +1,37 @@
-"""Classical resnets [1]
+"""Classical resnets [1].
 
 Note that in [3], Wide ResNet 50-2 is without pre-activation contrary to Wide ResNet16/28/40
 """
 
-from typing import List, Tuple
+from __future__ import annotations
 
-import torch
+from typing import TYPE_CHECKING
+
+import torch.nn.functional as F  # noqa: N812
 from torch import nn
-import torch.nn.functional as F
 
-from . import init
-from .avg_2d import Avg2d
-from .shortcut import ProjectionShortcut
+from torch_resnet import avg_2d, init
+from torch_resnet.shortcut import ProjectionShortcut
 
+if TYPE_CHECKING:
+    import torch
+
+    from torch_resnet import protocols
 
 __all__ = [
     "ResNet",
     "ResNet18",
-    "ResNet34",
-    "ResNet50",
-    "ResNet101",
-    "ResNet152",
-    "ResNet200",
     "ResNet20",
     "ResNet32",
+    "ResNet34",
     "ResNet44",
+    "ResNet50",
     "ResNet56",
+    "ResNet101",
     "ResNet110",
+    "ResNet152",
     "ResNet164",
+    "ResNet200",
     "ResNet1001",
     "ResNet1202",
     "WideResNet16",
@@ -37,28 +41,28 @@ __all__ = [
 
 
 class BasicBlock(nn.Module):
-    """Basic bloc"""
+    """Basic bloc."""
 
     def __init__(
         self,
         in_planes: int,
         planes: int,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         stride=1,
         width=1,
         drop_rate=0.0,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             stride (int): Stride of the first convolution to downsample spatial dimensions
-                usally set to 1 (no downsampling) or 2 (downsample by 2)
+                usually set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet.
             drop_rate (float): dropout rate to apply between the convolution.
         """
@@ -71,7 +75,7 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(self.out_planes, self.out_planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(self.out_planes)
 
-        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))
+        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))  # type: ignore[call-overload]
         if self.shortcut[0].requires_activation:
             self.shortcut.insert(1, nn.BatchNorm2d(self.out_planes))
 
@@ -85,7 +89,7 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    """Bottleneck block
+    """Bottleneck block.
 
     Expand features dimension by expansion
     """
@@ -97,21 +101,21 @@ class Bottleneck(nn.Module):
         in_planes: int,
         planes: int,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         stride=1,
         width=1,
         drop_rate=0.0,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             stride (int): Stride of the 3x3 convolution to downsample spatial dimensions
-                usally set to 1 (no downsampling) or 2 (downsample by 2)
+                usually set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet. (Increase only 3x3 conv features)
             drop_rate (float): Unused. Kept to match the BasicBlock api.
         """
@@ -129,7 +133,7 @@ class Bottleneck(nn.Module):
         self.conv3 = nn.Conv2d(mid_planes, self.out_planes, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(self.out_planes)
 
-        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))
+        self.shortcut = nn.Sequential(shortcut(in_planes, self.out_planes, stride))  # type: ignore[call-overload]
         if self.shortcut[0].requires_activation:
             self.shortcut.insert(1, nn.BatchNorm2d(self.out_planes))
 
@@ -144,28 +148,28 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    """Base class for Resnet"""
+    """Base class for Resnet."""
 
     def __init__(
         self,
-        dimensions: List[Tuple[int, int]],
-        block: type = BasicBlock,
+        dimensions: list[tuple[int, int]],
+        block: type[protocols.Block] = BasicBlock,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         in_planes=3,
         width=1,
         drop_rate=0.0,
         small_images=False,
         zero_init_residual=False,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
-            dimensions (List[Tuple[int, int]]): All the dimensions of the resnet as (num_blocks, planes)
+            dimensions (list[tuple[int, int]]): All the dimensions of the resnet as (num_blocks, planes)
                 for each main layer.
-            block (type): Constructor of a block (BasicBlock or Bottleneck or your own)
+            block (type[Block]): Constructor of a block (BasicBlock or Bottleneck or your own)
                 Default: BasicBlock
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             in_planes (int): Number of channels in the input images
                 Default: 3 (standard images)
@@ -199,8 +203,8 @@ class ResNet(nn.Module):
             )
 
         strides = [1] + [2] * (len(dimensions) - 2)
-        layers: List[nn.Module] = []
-        for (num_blocks, planes), stride in zip(dimensions[1:], strides):
+        layers: list[nn.Module] = []
+        for (num_blocks, planes), stride in zip(dimensions[1:], strides, strict=True):
             layers.append(
                 self._make_layer(
                     block=block,
@@ -214,31 +218,40 @@ class ResNet(nn.Module):
             )
 
         self.layers = nn.Sequential(*layers)
-        self.avgpool = Avg2d()
+        self.avgpool = avg_2d.Avg2d()
         self.head: nn.Module = nn.Identity()
 
         init.resnet_init(self, zero_init_residual)
 
     def _make_layer(
-        self, *, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
+        self,
+        *,
+        block: type[protocols.Block],
+        shortcut: type[protocols.Shortcut],
+        planes: int,
+        num_blocks: int,
+        stride: int,
+        width: int,
+        drop_rate: float,
     ) -> nn.Module:
         strides = [stride] + [1] * (num_blocks - 1)
-        layers = []
+        layers: list[protocols.Block] = []
         for stride_ in strides:
             layers.append(
                 block(self.out_planes, planes, shortcut=shortcut, stride=stride_, width=width, drop_rate=drop_rate)
             )
             self.out_planes = layers[-1].out_planes
-        return nn.Sequential(*layers)
+        return nn.Sequential(*layers)  # type: ignore[call-overload]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """PreActResNet forward pass."""
         out = self.init_layer(x)
         out = self.layers(out)
         out = self.avgpool(out)
         return self.head(out)
 
     def set_head(self, head: nn.Module) -> None:
-        """Set the head of the ResNet
+        """Set the head of the ResNet.
 
         By default the head is an identity after the AvgPooling
 
@@ -257,39 +270,39 @@ class ResNet(nn.Module):
 
 
 class ResNet18(ResNet):
-    """Resnet 18
+    """Resnet 18.
 
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512])), BasicBlock, **kwargs)
+        super().__init__(list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512], strict=True)), BasicBlock, **kwargs)
 
 
 class ResNet34(ResNet):
-    """Resnet 34
+    """Resnet 34.
 
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), BasicBlock, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512], strict=True)), BasicBlock, **kwargs)
 
 
 class ResNet50(ResNet):
-    """Resnet 50
+    """Resnet 50.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
 
@@ -297,17 +310,17 @@ class ResNet50(ResNet):
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512], strict=True)), Bottleneck, **kwargs)
 
 
 class ResNet101(ResNet):
-    """Resnet 101
+    """Resnet 101.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
 
@@ -315,155 +328,148 @@ class ResNet101(ResNet):
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512], strict=True)), Bottleneck, **kwargs)
 
 
 class ResNet152(ResNet):
-    """Resnet 152
+    """Resnet 152.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512], strict=True)), Bottleneck, **kwargs)
 
 
 class ResNet200(ResNet):
-    """Resnet 200
+    """Resnet 200.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512])), Bottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512], strict=True)), Bottleneck, **kwargs)
 
 
 # Designed for Cifar
 
 
 class ResNet20(ResNet):
-    """Resnet 20
+    """Resnet 20.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 3, 3], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 3, 3, 3], [16, 16, 32, 64], strict=True)), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class ResNet32(ResNet):
-    """Resnet 32
+    """Resnet 32.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 5, 5, 5], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 5, 5, 5], [16, 16, 32, 64], strict=True)), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class ResNet44(ResNet):
-    """Resnet 44
+    """Resnet 44.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 7, 7, 7], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 7, 7, 7], [16, 16, 32, 64], strict=True)), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class ResNet56(ResNet):
-    """Resnet 56
+    """Resnet 56.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 9, 9, 9], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 9, 9, 9], [16, 16, 32, 64], strict=True)), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class ResNet110(ResNet):
-    """Resnet 110
+    """Resnet 110.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 18, 18, 18], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 18, 18, 18], [16, 16, 32, 64], strict=True)), BasicBlock, small_images=small_images, **kwargs
+        )
 
 
 class ResNet164(ResNet):
-    """Resnet 164
+    """Resnet 164.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
-
-        Args:
-            kwargs: Any valid argument for `ResNet` class (See the documentation)
-                Except dimensions and block
-        """
-        # Following [2] -> Usage of bottle neck
-        super().__init__(list(zip([1, 18, 18, 18], [16, 16, 32, 64])), Bottleneck, small_images=small_images, **kwargs)
-
-
-class ResNet1001(ResNet):
-    """Resnet 1001
-
-    Was designed for Cifar.
-    """
-
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
@@ -471,18 +477,40 @@ class ResNet1001(ResNet):
         """
         # Following [2] -> Usage of bottle neck
         super().__init__(
-            list(zip([1, 111, 111, 111], [16, 16, 32, 64])), Bottleneck, small_images=small_images, **kwargs
+            list(zip([1, 18, 18, 18], [16, 16, 32, 64], strict=True)), Bottleneck, small_images=small_images, **kwargs
+        )
+
+
+class ResNet1001(ResNet):
+    """Resnet 1001.
+
+    Was designed for Cifar.
+    """
+
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
+
+        Args:
+            kwargs: Any valid argument for `ResNet` class (See the documentation)
+                Except dimensions and block
+        """
+        # Following [2] -> Usage of bottle neck
+        super().__init__(
+            list(zip([1, 111, 111, 111], [16, 16, 32, 64], strict=True)),
+            Bottleneck,
+            small_images=small_images,
+            **kwargs,
         )
 
 
 class ResNet1202(ResNet):
-    """Resnet 1202
+    """Resnet 1202.
 
     Was designed for Cifar. Performs poorly according to [1].
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
@@ -490,12 +518,15 @@ class ResNet1202(ResNet):
         """
         # Following [1] -> Default block
         super().__init__(
-            list(zip([1, 200, 200, 200], [16, 16, 32, 64])), BasicBlock, small_images=small_images, **kwargs
+            list(zip([1, 200, 200, 200], [16, 16, 32, 64], strict=True)),
+            BasicBlock,
+            small_images=small_images,
+            **kwargs,
         )
 
 
 class WideResNet16(ResNet):
-    """WideResnet 16-k without preactivation
+    """WideResnet 16-k without preactivation.
 
     Was designed for Cifar.
 
@@ -503,15 +534,15 @@ class WideResNet16(ResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 2, 2, 2], [16, 16, 32, 64])),
+            list(zip([1, 2, 2, 2], [16, 16, 32, 64], strict=True)),
             BasicBlock,
             drop_rate=drop_rate,
             small_images=small_images,
@@ -520,7 +551,7 @@ class WideResNet16(ResNet):
 
 
 class WideResNet28(ResNet):
-    """WideResnet 28-k without preactivation
+    """WideResnet 28-k without preactivation.
 
     Was designed for Cifar.
 
@@ -528,15 +559,15 @@ class WideResNet28(ResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 4, 4, 4], [16, 16, 32, 64])),
+            list(zip([1, 4, 4, 4], [16, 16, 32, 64], strict=True)),
             BasicBlock,
             drop_rate=drop_rate,
             small_images=small_images,
@@ -545,7 +576,7 @@ class WideResNet28(ResNet):
 
 
 class WideResNet40(ResNet):
-    """WideResnet 40-k without preactivation
+    """WideResnet 40-k without preactivation.
 
     Was designed for Cifar.
 
@@ -553,15 +584,15 @@ class WideResNet40(ResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `ResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 6, 6, 6], [16, 16, 32, 64])),
+            list(zip([1, 6, 6, 6], [16, 16, 32, 64], strict=True)),
             BasicBlock,
             drop_rate=drop_rate,
             small_images=small_images,

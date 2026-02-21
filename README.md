@@ -86,15 +86,15 @@ Follow the link to access the training curves for each model on Cifar10 and each
 
 \* ResNet1001 cannot be trained with AMP (due to training instability) thus it was trained without AMP. Also, please note that AMP usually leads to slightly worst performances, therefore most of our results here are probably underestimated.
 
-Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances. Also these results are missing the correct resnet initialization from [1]. 
+Note that in [2] and in most github implementation, the test set is used as a validation set (taking the max acc reached on it as the final result, as done in the [official implem](https://github.com/facebookarchive/fb.resnet.torch) [2]), obviously leading to falsely better performances. Also these results are missing the correct resnet initialization from [1].
 
-<!-- |Model (No Amp, best)|Params|Cifar100                                                                      |Cifar100 (paper)    | 
+<!-- |Model (No Amp, best)|Params|Cifar100                                                                      |Cifar100 (paper)    |
 |:-                  |:---- |:-----                                                                        |:----               |
 |PreActResNet164     |1.7M  |24.83 $\pm$ 0.16                                                              |24.33 [2]           |
 |PreActResNet1001    |10.3M |22.86                                                                         |22.68 $\pm$ 0.22 [2]|-->
 
 
-We quickly tried our implementations for shortcuts (with AMP and last model evalutation)
+We quickly tried our implementations for shortcuts (with AMP and last model evaluation)
 
 
 |Model (No Amp, Best)            |Params|Cifar10                                                                      |Cifar100             |
@@ -108,11 +108,11 @@ We quickly tried our implementations for shortcuts (with AMP and last model eval
 |PreActResNet164-FullProj        |3.19M |Failed (90.0)                                                                |Failed (99.0)        |
 |PreActResNet164-Conv            |2.06M |5.55 $\pm$ 0.18                                                              |23.86 $\pm$ 0.16     |
 
-More works are needed to fully investigate shortcuts but intuitevely and from the few experiments we've done, it seems that they all work correctly. FullProjectionShortcut
+More works are needed to fully investigate shortcuts but intuitively and from the few experiments we've done, it seems that they all work correctly. FullProjectionShortcut
 should not be used as it increases instability (no more true shortcuts) when training. The introduced convolutional shortcut (3x3 conv instead of 1x1) seems to
 help on Cifar100 but increase the number of parameters and flops.
 
-Since [4f15ff0fe](https://github.com/raphaelreme/torch-resnet/commit/4f15ff0fe780e93a9903550e58f6b2215d4e17ab), resnets are intialized correctly which improves slightly
+Since [4f15ff0fe](https://github.com/raphaelreme/torch-resnet/commit/4f15ff0fe780e93a9903550e58f6b2215d4e17ab), resnets are initialized correctly which improves slightly
 the performances. Here we show some results with different architectures and shortcuts with the new initialization(s).
 
 |Model (No Amp, Best, Init)           |Params|Cifar10          |Cifar100          |
@@ -133,7 +133,7 @@ the performances. Here we show some results with different architectures and sho
 |PreActResNet1001 (Proj, Zero init)   |10.35M|xxx              | 22.03 $\pm$ 0.22 |
 |PreActResNet1001-Id                  |10.31M|xxx              | 21.64 $\pm$ 0.31 |
 
-First, we are now able to reproduce the results of [2] on Cifar100 with PreActResNet164 and PreActResNet1001 (24.33 and 22.68). Then, it shows that the new intialization improves the results on Cifar100 (Not so much for Cifar10 though). Finally, the zero residual initialization from https://arxiv.org/abs/1706.02677 (and extended for pre-activation) seems helpful when the shortcuts are the default projection shortcuts. With true identity shortcuts, the training is worst (probably because almost all layers are disabled at the beginning). One could try to apply the zero residual initialization only after a few layers. 
+First, we are now able to reproduce the results of [2] on Cifar100 with PreActResNet164 and PreActResNet1001 (24.33 and 22.68). Then, it shows that the new initialization improves the results on Cifar100 (Not so much for Cifar10 though). Finally, the zero residual initialization from https://arxiv.org/abs/1706.02677 (and extended for pre-activation) seems helpful when the shortcuts are the default projection shortcuts. With true identity shortcuts, the training is worst (probably because almost all layers are disabled at the beginning). One could try to apply the zero residual initialization only after a few layers.
 
 
 ## References

@@ -14,9 +14,8 @@ Reference:
     Wide Residual Networks. https://arxiv.org/pdf/1605.07146
 """
 
-from .preact_resnet import *
-from .resnet import *
-from .shortcut import *
-
+from torch_resnet.preact_resnet import *  # noqa: F403
+from torch_resnet.resnet import *  # noqa: F403
+from torch_resnet.shortcut import *  # noqa: F403
 
 __version__ = "0.0.4"

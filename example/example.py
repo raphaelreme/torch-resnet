@@ -1,21 +1,18 @@
-"""Reproducing cifar results with ResNets architectures"""
+"""Reproducing cifar results with ResNets architectures."""
 
 import argparse
 import pathlib
-from typing import Union
 
-from deep_trainer import PytorchTrainer
-from deep_trainer.pytorch import metric
 import torch
 import torch.utils.data
-import torchvision  # type: ignore
+import torchvision  # type: ignore[import-untyped]
 import yaml
+from deep_trainer import PytorchTrainer, metric
+from expyrun.main import StdFileRedirection
+from utils import create_seed_worker, enforce_all_seeds
 
 import torch_resnet
 from torch_resnet.utils import count_layers, count_parameters
-
-from utils import create_seed_worker, enforce_all_seeds, StdFileRedirection
-
 
 MEANS = {
     "CIFAR10": (0.4914, 0.4822, 0.4465),
@@ -28,8 +25,8 @@ STDS = {
 }
 
 
-def parse_model_name(model_name: str, shortcut_name: str) -> Union[torch_resnet.ResNet, torch_resnet.PreActResNet]:
-    """Parse model name
+def parse_model_name(model_name: str, shortcut_name: str) -> torch_resnet.ResNet | torch_resnet.PreActResNet:
+    """Parse model name.
 
     Format: ClassName[-width][-drop_rate]
 
@@ -55,23 +52,25 @@ def parse_model_name(model_name: str, shortcut_name: str) -> Union[torch_resnet.
     if specs:
         raise ValueError(f"Too many specifications for {model_name}: {specs}. Expect {model_name}[-width]-[drop_rate]")
 
-    model: Union[torch_resnet.ResNet, torch_resnet.PreActResNet]
+    model: torch_resnet.ResNet | torch_resnet.PreActResNet
     model = getattr(torch_resnet, model_name)(**kwargs)
 
     return model
 
 
-def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler._LRScheduler:
-    """Build the scheduler used in [1] and [2] (resnets/preact resnets)"""
+def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler.LRScheduler:
+    """Build the scheduler used in [1] and [2] (resnets/preact resnets)."""
 
     def _lambda(step):
-        if step <= 400:
+        steps = [400, 32000, 48000]
+
+        if step <= steps[0]:
             return 0.1
 
-        if step <= 32000:
+        if step <= steps[1]:
             return 1.0
 
-        if step <= 48000:
+        if step <= steps[2]:
             return 0.1
 
         return 0.01
@@ -79,23 +78,24 @@ def build_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_s
     return torch.optim.lr_scheduler.LambdaLR(optimizer, _lambda)
 
 
-def build_wide_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler._LRScheduler:
-    """Build the scheduler used in [3] (Wide resnets)
+def build_wide_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler.LRScheduler:
+    """Build the scheduler used in [3] (Wide resnets).
 
     Yields better results than the original one
     """
 
     def _lambda(step):
-        if step <= 400:
-            return 0.1
+        steps = [400, 23000, 46000, 62000]
+        # if step <= steps[0]:
+        #     return 0.1
 
-        if step <= 23000:
+        if step <= steps[1]:
             return 1.0
 
-        if step <= 46000:
+        if step <= steps[2]:
             return 0.2
 
-        if step <= 62000:
+        if step <= steps[3]:
             return 0.04
 
         return 0.008
@@ -103,7 +103,7 @@ def build_wide_resnet_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim
     return torch.optim.lr_scheduler.LambdaLR(optimizer, _lambda)
 
 
-def main(
+def main(  # noqa: PLR0913
     model_name: str,
     shortcut_name: str,
     dataset: str,
@@ -193,10 +193,7 @@ def main(
     )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(trainset) / batch_size * epochs)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [32000, 48000], 0.1)
-    if wide_scheduler:
-        scheduler = build_wide_resnet_scheduler(optimizer)
-    else:
-        scheduler = build_resnet_scheduler(optimizer)
+    scheduler = build_wide_resnet_scheduler(optimizer) if wide_scheduler else build_resnet_scheduler(optimizer)
 
     # Criterion
     criterion = torch.nn.CrossEntropyLoss()
@@ -235,7 +232,7 @@ def main(
 
     if eval_best:
         print("Loading best model")
-        trainer.load(f"{trainer.output_dir}/checkpoints/best.ckpt")
+        trainer.load(trainer.output_dir / "checkpoints" / "best.ckpt")
 
     # Evaluate
     print("Evaluate...")
@@ -245,8 +242,7 @@ def main(
 
     print(yaml.dump(metrics))
 
-    with open(f"experiments/{dataset}/{model_name}-{shortcut_name}/{seed}/metrics.yml", "w") as file:
-        file.write(yaml.dump(metrics))
+    (trainer.output_dir / "metrics.yml").write_text(yaml.dump(metrics))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,0 @@
-deep-trainer
-torch
-torch-resnet
-torchvision
-pyyaml

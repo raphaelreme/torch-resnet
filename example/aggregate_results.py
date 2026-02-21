@@ -1,22 +1,27 @@
+from __future__ import annotations
+
 import argparse
 import pathlib
 import re
-from typing import Iterable, List, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import yaml
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
-def sorted_alphanumeric(data: Iterable[pathlib.Path]) -> List[pathlib.Path]:
-    """Sorts alphanumeriacally an iterable of path
+
+def sorted_alphanumeric(data: Iterable[pathlib.Path]) -> list[pathlib.Path]:
+    """Sorts alphanumeriacally an iterable of path.
 
     "1" < "2" < "10" < "foo1" < "foo2" < "foo3"
     """
 
-    def convert(text: str) -> Union[int, str]:
+    def convert(text: str) -> int | str:
         return int(text) if text.isdigit() else text.lower()
 
-    def alphanum_key(key: pathlib.Path) -> List[Union[int, str]]:
+    def alphanum_key(key: pathlib.Path) -> list[int | str]:
         return [convert(c) for c in re.split("([0-9]+)", key.name)]
 
     return sorted(data, key=alphanum_key)
@@ -44,7 +49,9 @@ def main(data_dir: str):
 
         if errors:
             print(
-                f"{model_name:40}|{round(np.mean(errors), 2):10}|{round(np.std(errors), 2):10}|{round(min(errors), 2):10}|{round(max(errors), 2):10}|{round(metrics['num_parameters'], 2):10}M|{len(errors):8}"
+                f"{model_name:40}|{round(np.mean(errors), 2):10}|"
+                f"{round(np.std(errors), 2):10}|{round(min(errors), 2):10}|"
+                f"{round(max(errors), 2):10}|{round(metrics['num_parameters'], 2):10}M|{len(errors):8}"
             )
 
 

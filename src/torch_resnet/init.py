@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Union
-
 import torch
 
-from . import resnet, preact_resnet
+from torch_resnet import preact_resnet, resnet
 
 
-def resnet_init(model: Union[resnet.ResNet, preact_resnet.PreActResNet], zero_init_residual=False):
-    """Initialize a resnet following the paper [1]
+def resnet_init(model: resnet.ResNet | preact_resnet.PreActResNet, zero_init_residual=False) -> None:
+    """Initialize a resnet following the paper [1].
 
     (More Precisely: Delving deep into rectifiers: Surpassing human-level performance on ImageNet
     classification - He, K. et al. (2015))

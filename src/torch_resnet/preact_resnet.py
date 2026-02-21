@@ -1,33 +1,44 @@
-"""Pre-activation resnets
+"""Pre-activation resnets.
 
 Note that in [3], Wide ResNet 50-2 is without pre-activation contrary to Wide ResNet16/28/40
 """
 
-from typing import List, Tuple
+from __future__ import annotations
 
-import torch
+import sys
+from typing import TYPE_CHECKING
+
+import torch.nn.functional as F  # noqa: N812
 from torch import nn
-import torch.nn.functional as F
 
-from . import init
-from .avg_2d import Avg2d
-from .shortcut import ProjectionShortcut
+from torch_resnet import avg_2d, init
+from torch_resnet.shortcut import ProjectionShortcut
+
+if TYPE_CHECKING:
+    import torch
+
+    from torch_resnet import protocols
+
+if sys.version_info < (3, 12):
+    from typing_extensions import override
+else:
+    from typing import override
 
 
 __all__ = [
     "PreActResNet",
     "PreActResNet18",
-    "PreActResNet34",
-    "PreActResNet50",
-    "PreActResNet101",
-    "PreActResNet152",
-    "PreActResNet200",
     "PreActResNet20",
     "PreActResNet32",
+    "PreActResNet34",
     "PreActResNet44",
+    "PreActResNet50",
     "PreActResNet56",
+    "PreActResNet101",
     "PreActResNet110",
+    "PreActResNet152",
     "PreActResNet164",
+    "PreActResNet200",
     "PreActResNet1001",
     "PreActResNet1202",
     "PreActWideResNet16",
@@ -37,28 +48,28 @@ __all__ = [
 
 
 class PreActBlock(nn.Module):
-    """Pre-activation basic bloc"""
+    """Pre-activation basic bloc."""
 
     def __init__(
         self,
         in_planes: int,
         planes: int,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         stride=1,
         width=1,
         drop_rate=0.0,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             stride (int): Stride of the first convolution to downsample spatial dimensions
-                usally set to 1 (no downsampling) or 2 (downsample by 2)
+                usually set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet.
             drop_rate (float): dropout rate to apply between the convolution.
         """
@@ -73,6 +84,7 @@ class PreActBlock(nn.Module):
 
         self.shortcut = shortcut(in_planes, self.out_planes, stride)
 
+    @override
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = F.relu(self.bn1(x))
         # Apply shortcut on the activated input only when it requires activation
@@ -84,7 +96,7 @@ class PreActBlock(nn.Module):
 
 
 class PreActBottleneck(nn.Module):
-    """Pre-activation bottleneck
+    """Pre-activation bottleneck.
 
     Expand features dimension by expansion
     """
@@ -96,21 +108,21 @@ class PreActBottleneck(nn.Module):
         in_planes: int,
         planes: int,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         stride=1,
         width=1,
         drop_rate=0.0,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
             in_planes (int): Input dimension of features
             planes (int): Default target dimension of features (before applying width or expansion)
                 See self.out_planes to know the real output dimension
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             stride (int): Stride of the 3x3 convolution to downsample spatial dimensions
-                usally set to 1 (no downsampling) or 2 (downsample by 2)
+                usually set to 1 (no downsampling) or 2 (downsample by 2)
             width (int): Width of the block for WideResNet. (Increase only 3x3 conv features)
             drop_rate (float): Unused. Kept to match the BasicBlock api.
         """
@@ -130,7 +142,8 @@ class PreActBottleneck(nn.Module):
 
         self.shortcut = shortcut(in_planes, self.out_planes, stride)
 
-    def forward(self, x):
+    @override
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = F.relu(self.bn1(x))
         # Apply shortcut on the activated input only when it requires activation
         shortcut = self.shortcut(out) if self.shortcut.requires_activation else self.shortcut(x)
@@ -142,28 +155,28 @@ class PreActBottleneck(nn.Module):
 
 
 class PreActResNet(nn.Module):
-    """Base class for Resnet with pre-activation"""
+    """Base class for Resnet with pre-activation."""
 
     def __init__(
         self,
-        dimensions: List[Tuple[int, int]],
-        block: type = PreActBlock,
+        dimensions: list[tuple[int, int]],
+        block: type[protocols.Block] = PreActBlock,
         *,
-        shortcut: type = ProjectionShortcut,
+        shortcut: type[protocols.Shortcut] = ProjectionShortcut,
         in_planes=3,
         width=1,
         drop_rate=0.0,
         small_images=False,
         zero_init_residual=False,
     ):
-        """Constructor
+        """Constructor.
 
         Args:
             dimensions (List[Tuple[int, int]]): All the dimensions of the resnet as (num_blocks, planes)
                 for each main layer.
-            block (type): Constructor of a block (PreActBlock or Bottleneck or your own)
+            block (type[Block]): Constructor of a block (PreActBlock or Bottleneck)
                 Default: PreActBlock
-            shortcut (type): Constructor for shortcut blocks
+            shortcut (type[Shortcut]): Constructor for shortcut blocks
                 Default: ProjectionShortcut
             in_planes (int): Number of channels in the input images
                 Default: 3 (standard images)
@@ -191,8 +204,8 @@ class PreActResNet(nn.Module):
             )
 
         strides = [1] + [2] * (len(dimensions) - 2)
-        layers: List[nn.Module] = []
-        for (num_blocks, planes), stride in zip(dimensions[1:], strides):
+        layers: list[nn.Module] = []
+        for (num_blocks, planes), stride in zip(dimensions[1:], strides, strict=True):
             layers.append(
                 self._make_layer(
                     block=block,
@@ -207,24 +220,33 @@ class PreActResNet(nn.Module):
 
         self.layers = nn.Sequential(*layers)
         self.norm = nn.BatchNorm2d(self.out_planes)
-        self.avgpool = Avg2d()
+        self.avgpool = avg_2d.Avg2d()
         self.head: nn.Module = nn.Identity()
 
         init.resnet_init(self, zero_init_residual)
 
     def _make_layer(
-        self, *, block: type, shortcut: type, planes: int, num_blocks: int, stride: int, width: int, drop_rate: float
+        self,
+        *,
+        block: type[protocols.Block],
+        shortcut: type[protocols.Shortcut],
+        planes: int,
+        num_blocks: int,
+        stride: int,
+        width: int,
+        drop_rate: float,
     ) -> nn.Module:
         strides = [stride] + [1] * (num_blocks - 1)
-        layers = []
+        layers: list[protocols.Block] = []
         for stride_ in strides:
             layers.append(
                 block(self.out_planes, planes, shortcut=shortcut, stride=stride_, width=width, drop_rate=drop_rate)
             )
             self.out_planes = layers[-1].out_planes
-        return nn.Sequential(*layers)
+        return nn.Sequential(*layers)  # type: ignore[call-overload]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """PreActResNet forward pass."""
         out = self.init_layer(x)
         out = self.layers(out)
         out = F.relu(self.norm(out))
@@ -232,7 +254,7 @@ class PreActResNet(nn.Module):
         return self.head(out)
 
     def set_head(self, head: nn.Module) -> None:
-        """Set the head of the ResNet
+        """Set the head of the ResNet.
 
         By default the head is an identity after the AvgPooling
 
@@ -251,39 +273,39 @@ class PreActResNet(nn.Module):
 
 
 class PreActResNet18(PreActResNet):
-    """Resnet 18 with preactivation
+    """Resnet 18 with preactivation.
 
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512])), PreActBlock, **kwargs)
+        super().__init__(list(zip([1, 2, 2, 2, 2], [64, 64, 128, 256, 512], strict=True)), PreActBlock, **kwargs)
 
 
 class PreActResNet34(PreActResNet):
-    """Resnet 34 with preactivation
+    """Resnet 34 with preactivation.
 
     Was designed for ImageNet but can be adapted to cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), PreActBlock, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512], strict=True)), PreActBlock, **kwargs)
 
 
 class PreActResNet50(PreActResNet):
-    """Resnet 50 with preactivation
+    """Resnet 50 with preactivation.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
 
@@ -291,17 +313,17 @@ class PreActResNet50(PreActResNet):
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512])), PreActBottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 6, 3], [64, 64, 128, 256, 512], strict=True)), PreActBottleneck, **kwargs)
 
 
 class PreActResNet101(PreActResNet):
-    """Resnet 101 with preactivation
+    """Resnet 101 with preactivation.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
 
@@ -309,138 +331,148 @@ class PreActResNet101(PreActResNet):
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512])), PreActBottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 4, 23, 3], [64, 64, 128, 256, 512], strict=True)), PreActBottleneck, **kwargs)
 
 
 class PreActResNet152(PreActResNet):
-    """Resnet 152 with preactivation
+    """Resnet 152 with preactivation.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512])), PreActBottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 8, 36, 3], [64, 64, 128, 256, 512], strict=True)), PreActBottleneck, **kwargs)
 
 
 class PreActResNet200(PreActResNet):
-    """Resnet 200 with preactivation
+    """Resnet 200 with preactivation.
 
     Was designed for ImageNet but can be adapted to Cifar with small_images parameter
     """
 
     def __init__(self, **kwargs):
-        """Constructor
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512])), PreActBottleneck, **kwargs)
+        super().__init__(list(zip([1, 3, 24, 36, 3], [64, 64, 128, 256, 512], strict=True)), PreActBottleneck, **kwargs)
 
 
 # Designed for Cifar
 
 
 class PreActResNet20(PreActResNet):
-    """Resnet 20 with preactivation
+    """Resnet 20 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 3, 3, 3], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 3, 3, 3], [16, 16, 32, 64], strict=True)), PreActBlock, small_images=small_images, **kwargs
+        )
 
 
 class PreActResNet32(PreActResNet):
-    """Resnet 32 with preactivation
+    """Resnet 32 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 5, 5, 5], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 5, 5, 5], [16, 16, 32, 64], strict=True)), PreActBlock, small_images=small_images, **kwargs
+        )
 
 
 class PreActResNet44(PreActResNet):
-    """Resnet 44 with preactivation
+    """Resnet 44 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 7, 7, 7], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 7, 7, 7], [16, 16, 32, 64], strict=True)), PreActBlock, small_images=small_images, **kwargs
+        )
 
 
 class PreActResNet56(PreActResNet):
-    """Resnet 56 with preactivation
+    """Resnet 56 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 9, 9, 9], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 9, 9, 9], [16, 16, 32, 64], strict=True)), PreActBlock, small_images=small_images, **kwargs
+        )
 
 
 class PreActResNet110(PreActResNet):
-    """Resnet 110 with preactivation
+    """Resnet 110 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
-        super().__init__(list(zip([1, 18, 18, 18], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs)
+        super().__init__(
+            list(zip([1, 18, 18, 18], [16, 16, 32, 64], strict=True)), PreActBlock, small_images=small_images, **kwargs
+        )
 
 
 class PreActResNet164(PreActResNet):
-    """Resnet 164 with preactivation
+    """Resnet 164 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
@@ -448,18 +480,21 @@ class PreActResNet164(PreActResNet):
         """
         # Following [2] -> Usage of bottle neck
         super().__init__(
-            list(zip([1, 18, 18, 18], [16, 16, 32, 64])), PreActBottleneck, small_images=small_images, **kwargs
+            list(zip([1, 18, 18, 18], [16, 16, 32, 64], strict=True)),
+            PreActBottleneck,
+            small_images=small_images,
+            **kwargs,
         )
 
 
 class PreActResNet1001(PreActResNet):
-    """Resnet 1001 with preactivation
+    """Resnet 1001 with preactivation.
 
     Was designed for Cifar.
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
@@ -467,18 +502,21 @@ class PreActResNet1001(PreActResNet):
         """
         # Following [2] -> Usage of bottle neck
         super().__init__(
-            list(zip([1, 111, 111, 111], [16, 16, 32, 64])), PreActBottleneck, small_images=small_images, **kwargs
+            list(zip([1, 111, 111, 111], [16, 16, 32, 64], strict=True)),
+            PreActBottleneck,
+            small_images=small_images,
+            **kwargs,
         )
 
 
 class PreActResNet1202(PreActResNet):
-    """Resnet 1202 with preactivation
+    """Resnet 1202 with preactivation.
 
     Was designed for Cifar. Performs poorly according to [1].
     """
 
-    def __init__(self, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
@@ -486,12 +524,15 @@ class PreActResNet1202(PreActResNet):
         """
         # Following [1] -> Default block
         super().__init__(
-            list(zip([1, 200, 200, 200], [16, 16, 32, 64])), PreActBlock, small_images=small_images, **kwargs
+            list(zip([1, 200, 200, 200], [16, 16, 32, 64], strict=True)),
+            PreActBlock,
+            small_images=small_images,
+            **kwargs,
         )
 
 
 class PreActWideResNet16(PreActResNet):
-    """WideResnet 16-k with preactivation
+    """WideResnet 16-k with preactivation.
 
     Was designed for Cifar.
 
@@ -499,15 +540,15 @@ class PreActWideResNet16(PreActResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 2, 2, 2], [16, 16, 32, 64])),
+            list(zip([1, 2, 2, 2], [16, 16, 32, 64], strict=True)),
             PreActBlock,
             drop_rate=drop_rate,
             small_images=small_images,
@@ -516,7 +557,7 @@ class PreActWideResNet16(PreActResNet):
 
 
 class PreActWideResNet28(PreActResNet):
-    """WideResnet 28-k with preactivation
+    """WideResnet 28-k with preactivation.
 
     Was designed for Cifar.
 
@@ -524,15 +565,15 @@ class PreActWideResNet28(PreActResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 4, 4, 4], [16, 16, 32, 64])),
+            list(zip([1, 4, 4, 4], [16, 16, 32, 64], strict=True)),
             PreActBlock,
             drop_rate=drop_rate,
             small_images=small_images,
@@ -541,7 +582,7 @@ class PreActWideResNet28(PreActResNet):
 
 
 class PreActWideResNet40(PreActResNet):
-    """WideResnet 40-k with preactivation
+    """WideResnet 40-k with preactivation.
 
     Was designed for Cifar.
 
@@ -549,15 +590,15 @@ class PreActWideResNet40(PreActResNet):
     The shortcut layers (2 for these models) are added to the count. (They assume ProjectionShortcut)
     """
 
-    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):
-        """Constructor
+    def __init__(self, drop_rate=0.3, small_images=True, **kwargs):  # noqa: D417
+        """Constructor.
 
         Args:
             kwargs: Any valid argument for `PreActResNet` class (See the documentation)
                 Except dimensions and block
         """
         super().__init__(
-            list(zip([1, 6, 6, 6], [16, 16, 32, 64])),
+            list(zip([1, 6, 6, 6], [16, 16, 32, 64], strict=True)),
             PreActBlock,
             drop_rate=drop_rate,
             small_images=small_images,

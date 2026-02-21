@@ -1,13 +1,11 @@
-from typing import Tuple
-
 from torch import nn
 
 
 def count_parameters(model: nn.Module) -> int:
-    """Count the total of learnable parameters of the model
+    """Count the total of learnable parameters of the model.
 
     Args:
-        model (nn.Module)
+        model (nn.Module): The model.
 
     Returns:
         int: Number of learnable parameters in model
@@ -20,12 +18,12 @@ def count_parameters(model: nn.Module) -> int:
     return count
 
 
-def count_layers(model: nn.Module, layer_type: Tuple[type, ...] = (nn.Conv2d, nn.Linear)) -> int:
-    """Count the number of layer matching layer_type
+def count_layers(model: nn.Module, layer_type: tuple[type[nn.Module], ...] = (nn.Conv2d, nn.Linear)) -> int:
+    """Count the number of layer matching layer_type.
 
     Args:
-        model (nn.Module)
-        layer_type (Tuple[type, ...]): Types of layer to count
+        model (nn.Module): The model.
+        layer_type (Tuple[type[nn.Module], ...]): Types of layer to count
 
     Returns:
         int: Number of layer in model
